@@ -1,7 +1,7 @@
 import Foundation
 import LocalAuthentication
 
-enum PluginError:Int {
+enum PluginError: Int {
     case BIOMETRIC_UNKNOWN_ERROR = -100
     case BIOMETRIC_UNAVAILABLE = -101
     case BIOMETRIC_AUTHENTICATION_FAILED = -102
@@ -19,23 +19,22 @@ enum PluginError:Int {
         var code: Int
     }
 
-
     @objc(isAvailable:)
-    func isAvailable(_ command: CDVInvokedUrlCommand){
+    func isAvailable(_ command: CDVInvokedUrlCommand) {
         let authenticationContext = LAContext();
         var biometryType = "finger";
         var errorResponse: [AnyHashable: Any] = [
             "code": 0,
             "message": "Not Available"
         ];
-        var error:NSError?;
-        let policy:LAPolicy = .deviceOwnerAuthenticationWithBiometrics;
+        var error: NSError?;
+        let policy: LAPolicy = .deviceOwnerAuthenticationWithBiometrics;
         var pluginResult = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: "Not available");
         let available = authenticationContext.canEvaluatePolicy(policy, error: &error);
 
         var results: [String : Any]
 
-        if(error != nil){
+        if (error != nil) {
             biometryType = "none";
             errorResponse["code"] = error?.code;
             errorResponse["message"] = error?.localizedDescription;
@@ -43,47 +42,79 @@ enum PluginError:Int {
 
         if (available == true) {
             if #available(iOS 11.0, *) {
-                switch(authenticationContext.biometryType) {
+                switch (authenticationContext.biometryType) {
                 case .none:
                     biometryType = "none";
+                    
+                    break;
                 case .touchID:
                     biometryType = "finger";
+                    
+                    break;
                 case .faceID:
                     biometryType = "face"
+                    
+                    break;
+                @unknown default:
+                    biometryType = "none";
                 }
             }
 
             pluginResult = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: biometryType);
-        }else{
+        } else {
             var code: Int;
-            switch(error!._code) {
+            switch (error!._code) {
                 case Int(kLAErrorBiometryNotAvailable):
                     code = PluginError.BIOMETRIC_UNAVAILABLE.rawValue;
+
                     break;
                 case Int(kLAErrorBiometryNotEnrolled):
                     code = PluginError.BIOMETRIC_NOT_ENROLLED.rawValue;
+                    
                     break;
-
                 default:
                     code = PluginError.BIOMETRIC_UNKNOWN_ERROR.rawValue;
+
                     break;
             }
+
             results = ["code": code, "message": error!.localizedDescription];
             pluginResult = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: results);
         }
 
         commandDelegate.send(pluginResult, callbackId:command.callbackId);
     }
+    
+    @objc(authenticate:)
+    func authenticate(_ command: CDVInvokedUrlCommand){
+        let data  = command.arguments[0] as AnyObject?;
+        let mode = data?["mode"] as? String;
+        
+        switch mode {
+            case "encrypt":
+                let secret = data?["secret"] as! String;
+                self.encryptSecret(secret, command: command);
+            
+            break;
+            case "decrypt":
+                let secret = data?["secret"] as! String;
+                self.decryptSecret(secret, command: command);
+            
+                break;
+            default:
+                justAuthenticate(command);
+        }
+    }
 
     func justAuthenticate(_ command: CDVInvokedUrlCommand) {
         let authenticationContext = LAContext();
-        var errorResponse: [AnyHashable: Any] = [
+        let errorResponse: [AnyHashable: Any] = [
             "message": "Something went wrong"
         ];
         var pluginResult = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: errorResponse);
         var reason = "Authentication";
-        var policy:LAPolicy = .deviceOwnerAuthentication;
-        let data  = command.arguments[0] as AnyObject?;
+        var policy: LAPolicy = .deviceOwnerAuthentication;
+        let data = command.arguments[0] as AnyObject?;
 
         if let disableBackup = data?["disableBackup"] as! Bool? {
             if disableBackup {
@@ -92,7 +123,7 @@ enum PluginError:Int {
             } else {
                 if let fallbackButtonTitle = data?["fallbackButtonTitle"] as! String? {
                     authenticationContext.localizedFallbackTitle = fallbackButtonTitle;
-                }else{
+                } else {
                     authenticationContext.localizedFallbackTitle = "Use Pin";
                 }
             }
@@ -107,13 +138,16 @@ enum PluginError:Int {
             policy,
             localizedReason: reason,
             reply: { [unowned self] (success, error) -> Void in
-                if( success ) {
+                if (success) {
                     pluginResult = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: "Success");
-                }else {
+                } else {
                     if (error != nil) {
 
                         var errorCodes = [Int: ErrorCodes]()
-                        var errorResult: [String : Any] = ["code":  PluginError.BIOMETRIC_UNKNOWN_ERROR.rawValue, "message": error?.localizedDescription ?? ""];
+                        var errorResult: [String : Any] = [
+                            "code": PluginError.BIOMETRIC_UNKNOWN_ERROR.rawValue,
+                            "message": error?.localizedDescription ?? ""
+                        ];
 
                         errorCodes[1] = ErrorCodes(code: PluginError.BIOMETRIC_AUTHENTICATION_FAILED.rawValue)
                         errorCodes[2] = ErrorCodes(code: PluginError.BIOMETRIC_DISMISSED.rawValue)
@@ -135,33 +169,35 @@ enum PluginError:Int {
         );
     }
 
-    func saveSecret(_ secretStr: String, command: CDVInvokedUrlCommand) {
-        let data  = command.arguments[0] as AnyObject?;
+    func encryptSecret(_ secretStr: String, command: CDVInvokedUrlCommand) {
         var pluginResult: CDVPluginResult
+        
         do {
-            let secret = Secret()
-            try? secret.delete()
-            let invalidateOnEnrollment = (data?["invalidateOnEnrollment"] as? Bool) ?? false
-            try secret.save(secretStr, invalidateOnEnrollment: invalidateOnEnrollment)
-            pluginResult = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: "Success");
+            let password = try fetchOrCreatePassword(command: command);
+            let result = try encryptMessage(message: secretStr, encryptionKey: password);
+            pluginResult = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: result);
         } catch {
-            let errorResult = ["code": PluginError.BIOMETRIC_UNKNOWN_ERROR.rawValue, "message": error.localizedDescription] as [String : Any];
+            var code = PluginError.BIOMETRIC_UNKNOWN_ERROR.rawValue
+            var message = error.localizedDescription
+            if let err = error as? KeychainError {
+                code = err.pluginError.rawValue
+                message = err.localizedDescription
+            }
+            let errorResult = ["code": code, "message": message] as [String : Any]
             pluginResult = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: errorResult);
         }
+
         self.commandDelegate.send(pluginResult, callbackId:command.callbackId)
         return
     }
 
 
-    func loadSecret(_ command: CDVInvokedUrlCommand) {
-        let data  = command.arguments[0] as AnyObject?;
-        var prompt = "Authentication"
-        if let description = data?["description"] as! String? {
-            prompt = description;
-        }
+    func decryptSecret(_ secretStr: String, command: CDVInvokedUrlCommand) {
         var pluginResult: CDVPluginResult
+
         do {
-            let result = try Secret().load(prompt)
+            let password = try fetchOrCreatePassword(command: command);
+            let result = try decryptMessage(encryptedMessage: secretStr, encryptionKey: password);
             pluginResult = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: result);
         } catch {
             var code = PluginError.BIOMETRIC_UNKNOWN_ERROR.rawValue
@@ -175,19 +211,38 @@ enum PluginError:Int {
         }
         self.commandDelegate.send(pluginResult, callbackId:command.callbackId)
     }
+    
+    func fetchOrCreatePassword(command: CDVInvokedUrlCommand) throws -> Data {
+        let data = command.arguments[0] as AnyObject?
+        let invalidateOnEnrollment = (data?["invalidateOnEnrollment"] as? Bool) ?? false
+        var prompt = "Authentication"
+        if let description = data?["description"] as! String? {
+            prompt = description
+        }
 
-    @objc(authenticate:)
-    func authenticate(_ command: CDVInvokedUrlCommand){
-        let data  = command.arguments[0] as AnyObject?;
-        if let secret = data?["secret"] as? String {
-            self.saveSecret(secret, command: command)
-            return
-        }
-        if let loadSecret = data?["loadSecret"] as? Bool, loadSecret {
-            self.loadSecret(command)
-            return
-        }
-        justAuthenticate(command)
+        let secret = Secret()
+        
+        do { // try to save pasword, if already exists this will trow an exception
+            try secret.save(prompt: prompt, invalidateOnEnrollment: invalidateOnEnrollment, secret: RNCryptor.randomData(ofLength: 128))
+        } catch {}
+        
+        return try secret.load(prompt: prompt, invalidateOnEnrollment: invalidateOnEnrollment);
+    }
+    
+    func encryptMessage(message: String, encryptionKey: Data) throws -> String {
+        let messageData = message.data(using: .utf8)!
+        let password = String(decoding: encryptionKey, as: UTF8.self)
+        let cipherData = RNCryptor.encrypt(data: messageData, withPassword: password)
+        return cipherData.base64EncodedString()
+    }
+
+    func decryptMessage(encryptedMessage: String, encryptionKey: Data) throws -> String {
+        let encryptedData = Data.init(base64Encoded: encryptedMessage)!
+        let password = String(decoding: encryptionKey, as: UTF8.self)
+        let decryptedData = try RNCryptor.decrypt(data: encryptedData, withPassword: password)
+        let decryptedString = String(data: decryptedData, encoding: .utf8)!
+
+        return decryptedString
     }
 
     override func pluginInitialize() {
@@ -234,7 +289,7 @@ struct KeychainError: Error {
 
 class Secret {
 
-    private static let keyName: String = "__aio_key"
+    private static let keyName: String = "__homecaregps_secret_key"
 
     private func getBioSecAccessControl(invalidateOnEnrollment: Bool) -> SecAccessControl {
         var access: SecAccessControl?
@@ -255,43 +310,31 @@ class Secret {
         return access!
     }
 
-    func save(_ secret: String, invalidateOnEnrollment: Bool) throws {
-        let password = secret.data(using: String.Encoding.utf8)!
-
-        // Allow a device unlock in the last 10 seconds to be used to get at keychain items.
-        // let context = LAContext()
-        // context.touchIDAuthenticationAllowableReuseDuration = 10
-
-        // Build the query for use in the add operation.
+    func save(prompt: String, invalidateOnEnrollment: Bool, secret: Data) throws {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
                                     kSecAttrAccount as String: Secret.keyName,
+                                    kSecValueData as String: secret,
                                     kSecAttrAccessControl as String: getBioSecAccessControl(invalidateOnEnrollment: invalidateOnEnrollment),
-                                    kSecValueData as String: password]
+                                    kSecUseOperationPrompt as String: prompt]
 
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else { throw KeychainError(status: status) }
     }
 
-    func load(_ prompt: String) throws -> String {
+    func load(prompt: String, invalidateOnEnrollment: Bool) throws -> Data {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
                                     kSecAttrAccount as String: Secret.keyName,
                                     kSecMatchLimit as String: kSecMatchLimitOne,
-                                    kSecReturnData as String : kCFBooleanTrue,
-                                    kSecAttrAccessControl as String: getBioSecAccessControl(invalidateOnEnrollment: true),
+                                    kSecReturnData as String: kCFBooleanTrue!,
+                                    kSecAttrAccessControl as String: getBioSecAccessControl(invalidateOnEnrollment: invalidateOnEnrollment),
                                     kSecUseOperationPrompt as String: prompt]
 
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         guard status == errSecSuccess else { throw KeychainError(status: status) }
 
-        guard let passwordData = item as? Data,
-            let password = String(data: passwordData, encoding: String.Encoding.utf8)
-            // let account = existingItem[kSecAttrAccount as String] as? String
-            else {
-                throw KeychainError(status: errSecInternalError)
-        }
-
-        return password
+        guard let passwordData = item as? Data else { throw KeychainError(status: errSecInternalError) }
+        return passwordData
     }
 
     func delete() throws {

@@ -23,15 +23,13 @@ public class BiometricActivity extends AppCompatActivity {
     private static final int REQUEST_CODE_CONFIRM_DEVICE_CREDENTIALS = 2;
     private PromptInfo mPromptInfo;
     private CryptographyManager mCryptographyManager;
-    private static final String SECRET_KEY = "__aio_secret_key";
     private BiometricPrompt mBiometricPrompt;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setTitle(null);
-        int layout = getResources()
-                .getIdentifier("biometric_activity", "layout", getPackageName());
+        int layout = getResources().getIdentifier("biometric_activity", "layout", getPackageName());
         setContentView(layout);
 
         if (savedInstanceState != null) {
@@ -42,8 +40,7 @@ public class BiometricActivity extends AppCompatActivity {
         mPromptInfo = new PromptInfo.Builder(getIntent().getExtras()).build();
         final Handler handler = new Handler(Looper.getMainLooper());
         Executor executor = handler::post;
-        mBiometricPrompt =
-                new BiometricPrompt(this, executor, mAuthenticationCallback);
+        mBiometricPrompt = new BiometricPrompt(this, executor, mAuthenticationCallback);
         try {
             authenticate();
         } catch (CryptoException e) {
@@ -52,86 +49,89 @@ public class BiometricActivity extends AppCompatActivity {
     }
 
     private void authenticate() throws CryptoException {
-        if (mPromptInfo.getSecret() == null && !mPromptInfo.loadSecret()) {
-            justAuthenticate();
+        if (mPromptInfo.getMode().equals("decrypt")) {
+            authenticateToDecrypt(mPromptInfo.getSecret());
             return;
         }
-        if (mPromptInfo.getSecret() == null) {
-            authenticateToDecrypt();
-            return;
-        }
-        authenticateToEncrypt(mPromptInfo.invalidateOnEnrollment());
-    }
 
-    private void authenticateToEncrypt(boolean invalidateOnEnrollment) throws CryptoException {
-        Cipher cipher = mCryptographyManager
-                .getInitializedCipherForEncryption(SECRET_KEY, invalidateOnEnrollment, this);
-        mBiometricPrompt.authenticate(createPromptInfo(), new BiometricPrompt.CryptoObject(cipher));
+        if (mPromptInfo.getMode().equals("encrypt")) {
+            authenticateToEncrypt(mPromptInfo.invalidateOnEnrollment());
+            return;
+        }
+
+        justAuthenticate();
     }
 
     private void justAuthenticate() {
         mBiometricPrompt.authenticate(createPromptInfo());
     }
 
-    private void authenticateToDecrypt() throws CryptoException {
-        byte[] initializationVector = EncryptedData.loadInitializationVector(this);
-        Cipher cipher = mCryptographyManager
-                .getInitializedCipherForDecryption(SECRET_KEY, initializationVector, this);
+    private void authenticateToEncrypt(boolean invalidateOnEnrollment) throws CryptoException {
+        Cipher cipher = mCryptographyManager.getInitializedCipherForEncryption(invalidateOnEnrollment, this);
+        mBiometricPrompt.authenticate(createPromptInfo(), new BiometricPrompt.CryptoObject(cipher));
+    }
+
+    private void authenticateToDecrypt(String ciphertext) throws CryptoException {
+        Cipher cipher = mCryptographyManager.getInitializedCipherForDecryption(ciphertext, this);
         mBiometricPrompt.authenticate(createPromptInfo(), new BiometricPrompt.CryptoObject(cipher));
     }
 
     private BiometricPrompt.PromptInfo createPromptInfo() {
-        BiometricPrompt.PromptInfo.Builder promptInfoBuilder = new BiometricPrompt.PromptInfo.Builder()
+        BiometricPrompt.PromptInfo.Builder promptInfoBuilder = new BiometricPrompt.PromptInfo
+                .Builder()
                 .setTitle(mPromptInfo.getTitle())
                 .setSubtitle(mPromptInfo.getSubtitle())
                 .setDescription(mPromptInfo.getDescription());
 
-        if (mPromptInfo.isDeviceCredentialAllowed()
-                && Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) { // TODO: remove after fix https://issuetracker.google.com/issues/142740104
+        if (mPromptInfo.isDeviceCredentialAllowed() && Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) { // TODO: remove after fix https://issuetracker.google.com/issues/142740104
             promptInfoBuilder.setDeviceCredentialAllowed(true);
         } else {
             promptInfoBuilder.setNegativeButtonText(mPromptInfo.getCancelButtonTitle());
         }
+
         return promptInfoBuilder.build();
     }
 
-    private BiometricPrompt.AuthenticationCallback mAuthenticationCallback =
-            new BiometricPrompt.AuthenticationCallback() {
+    private BiometricPrompt.AuthenticationCallback mAuthenticationCallback = new BiometricPrompt.AuthenticationCallback() {
+        @Override
+        public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
+            super.onAuthenticationError(errorCode, errString);
+            onError(errorCode, errString);
+        }
 
-                @Override
-                public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
-                    super.onAuthenticationError(errorCode, errString);
-                    onError(errorCode, errString);
+        @Override
+        public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
+            super.onAuthenticationSucceeded(result);
+            try {
+                Intent intent = null;
+                BiometricPrompt.CryptoObject cryptoObject = result.getCryptoObject();
+
+                if (mPromptInfo.getMode().equals("decrypt")) {
+                    intent = getDecryptedIntent(cryptoObject);
+                } else if (mPromptInfo.getMode().equals("encrypt")) {
+                    intent = getEncryptIntent(cryptoObject);
                 }
+                
+                finishWithSuccess(intent);
+            } catch (CryptoException e) {
+                finishWithError(e);
+            }
+        }
 
-                @Override
-                public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
-                    super.onAuthenticationSucceeded(result);
-                    try {
-                        finishWithSuccess(result.getCryptoObject());
-                    } catch (CryptoException e) {
-                        finishWithError(e);
-                    }
-                }
-
-                @Override
-                public void onAuthenticationFailed() {
-                    super.onAuthenticationFailed();
-                }
-            };
-
+        @Override
+        public void onAuthenticationFailed() {
+            super.onAuthenticationFailed();
+        }
+    };
 
     // TODO: remove after fix https://issuetracker.google.com/issues/142740104
     private void showAuthenticationScreen() {
-        KeyguardManager keyguardManager = ContextCompat
-                .getSystemService(this, KeyguardManager.class);
-        if (keyguardManager == null
-                || android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.LOLLIPOP) {
+        KeyguardManager keyguardManager = ContextCompat.getSystemService(this, KeyguardManager.class);
+        if (keyguardManager == null || android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.LOLLIPOP) {
             return;
         }
         if (keyguardManager.isKeyguardSecure()) {
-            Intent intent = keyguardManager
-                    .createConfirmDeviceCredentialIntent(mPromptInfo.getTitle(), mPromptInfo.getDescription());
+            Intent intent = keyguardManager.createConfirmDeviceCredentialIntent(mPromptInfo.getTitle(), mPromptInfo.getDescription());
             this.startActivityForResult(intent, REQUEST_CODE_CONFIRM_DEVICE_CREDENTIALS);
         } else {
             // Show a message that the user hasn't set up a lock screen.
@@ -144,7 +144,7 @@ public class BiometricActivity extends AppCompatActivity {
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQUEST_CODE_CONFIRM_DEVICE_CREDENTIALS) {
             if (resultCode == Activity.RESULT_OK) {
-                finishWithSuccess();
+                finishWithSuccess(null);
             } else {
                 finishWithError(PluginError.BIOMETRIC_PIN_OR_PATTERN_DISMISSED);
             }
@@ -178,40 +178,39 @@ public class BiometricActivity extends AppCompatActivity {
         }
     }
 
-    private void finishWithSuccess() {
-        setResult(RESULT_OK);
-        finish();
-    }
-
-    private void finishWithSuccess(BiometricPrompt.CryptoObject cryptoObject) throws CryptoException {
-        Intent intent = null;
-        if (mPromptInfo.loadSecret()) {
-            intent = getDecryptedIntent(cryptoObject);
-        } else if (mPromptInfo.getSecret() != null) {
-            encrypt(cryptoObject);
-        }
+    private void finishWithSuccess(Intent intent) {
         if (intent == null) {
             setResult(RESULT_OK);
         } else {
             setResult(RESULT_OK, intent);
         }
+        
         finish();
     }
 
-    private void encrypt(BiometricPrompt.CryptoObject cryptoObject) throws CryptoException {
-        String text = mPromptInfo.getSecret();
-        EncryptedData encryptedData = mCryptographyManager.encryptData(text, cryptoObject.getCipher());
-        encryptedData.save(this);
+    private Intent getEncryptIntent(BiometricPrompt.CryptoObject cryptoObject) throws CryptoException {
+        String secret = mPromptInfo.getSecret();
+        String ciphertext = mCryptographyManager.encryptData(secret, cryptoObject.getCipher());
+
+        if (ciphertext != null) {
+            Intent intent = new Intent();
+            intent.putExtra(Fingerprint.SECRET_EXTRA, ciphertext);
+            return intent;
+        }
+
+        return null;
     }
 
     private Intent getDecryptedIntent(BiometricPrompt.CryptoObject cryptoObject) throws CryptoException {
-        byte[] ciphertext = EncryptedData.loadCiphertext(this);
+        String ciphertext = mPromptInfo.getSecret();
         String secret = mCryptographyManager.decryptData(ciphertext, cryptoObject.getCipher());
+
         if (secret != null) {
             Intent intent = new Intent();
             intent.putExtra(Fingerprint.SECRET_EXTRA, secret);
             return intent;
         }
+
         return null;
     }
 

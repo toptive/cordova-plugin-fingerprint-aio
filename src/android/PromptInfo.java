@@ -16,9 +16,9 @@ class PromptInfo {
     private static final String DESCRIPTION = "description";
     private static final String FALLBACK_BUTTON_TITLE = "fallbackButtonTitle";
     private static final String CANCEL_BUTTON_TITLE = "cancelButtonTitle";
-    private static final String LOAD_SECRET = "loadSecret";
     private static final String INVALIDATE_ON_ENROLLMENT = "invalidateOnEnrollment";
     private static final String SECRET = "secret";
+    private static final String MODE = "mode";
 
     private Bundle bundle = new Bundle();
 
@@ -54,8 +54,8 @@ class PromptInfo {
         return bundle.getString(SECRET);
     }
 
-    boolean loadSecret() {
-        return bundle.getBoolean(LOAD_SECRET);
+    String getMode() {
+        return bundle.getString(MODE);
     }
 
     boolean invalidateOnEnrollment() {
@@ -71,15 +71,14 @@ class PromptInfo {
         private String description = null;
         private String fallbackButtonTitle = "Use backup";
         private String cancelButtonTitle = "Cancel";
-        private boolean loadSecret = false;
         private boolean invalidateOnEnrollment = false;
         private String secret = null;
+        private String mode = "authenticate";
 
         Builder(Context context) {
             PackageManager packageManager = context.getPackageManager();
             try {
-                ApplicationInfo app = packageManager
-                        .getApplicationInfo(context.getPackageName(), 0);
+                ApplicationInfo app = packageManager.getApplicationInfo(context.getPackageName(), 0);
                 title = packageManager.getApplicationLabel(app) + " Biometric Sign On";
             } catch (PackageManager.NameNotFoundException e) {
                 title = "Biometric Sign On";
@@ -107,7 +106,7 @@ class PromptInfo {
             bundle.putString(SECRET, this.secret);
             bundle.putBoolean(DISABLE_BACKUP, this.disableBackup);
             bundle.putBoolean(INVALIDATE_ON_ENROLLMENT, this.invalidateOnEnrollment);
-            bundle.putBoolean(LOAD_SECRET, this.loadSecret);
+            bundle.putString(MODE, this.mode);
             promptInfo.bundle = bundle;
 
             return promptInfo;
@@ -121,9 +120,9 @@ class PromptInfo {
             description = args.getString(DESCRIPTION, description);
             fallbackButtonTitle = args.getString(FALLBACK_BUTTON_TITLE, "Use Backup");
             cancelButtonTitle = args.getString(CANCEL_BUTTON_TITLE, "Cancel");
-            loadSecret = args.getBoolean(LOAD_SECRET, false);
             invalidateOnEnrollment = args.getBoolean(INVALIDATE_ON_ENROLLMENT, false);
             secret = args.getString(SECRET, null);
+            mode = args.getString(MODE, "authenticate");
         }
     }
 }

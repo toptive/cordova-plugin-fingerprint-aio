@@ -22,6 +22,7 @@
     </config-file>
     <header-file src="src/ios/Bridging-Header.h"/>
     <source-file src="src/ios/Fingerprint.swift"/>
+    <source-file src="src/ios/RNCryptor.swift"/>
 
     <!-- Usage description of Face ID for iOS 11+ -->
     <preference name="FACEID_USAGE_DESCRIPTION" default=" "/>
@@ -60,7 +61,6 @@
     <source-file src="src/android/Args.java" target-dir="src/de/niklasmerz/cordova/biometric"/>
     <source-file src="src/android/CryptographyManager.java" target-dir="src/de/niklasmerz/cordova/biometric"/>
     <source-file src="src/android/CryptographyManagerImpl.java" target-dir="src/de/niklasmerz/cordova/biometric"/>
-    <source-file src="src/android/EncryptedData.java" target-dir="src/de/niklasmerz/cordova/biometric"/>
     <source-file src="src/android/CryptoException.java" target-dir="src/de/niklasmerz/cordova/biometric"/>
     <source-file src="src/android/KeyInvalidatedException.java" target-dir="src/de/niklasmerz/cordova/biometric"/>
   </platform>

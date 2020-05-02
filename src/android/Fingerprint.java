@@ -29,14 +29,14 @@ public class Fingerprint extends CordovaPlugin {
 
     public void initialize(CordovaInterface cordova, CordovaWebView webView) {
         super.initialize(cordova, webView);
-        Log.v(TAG, "Init Fingerprint");
+
+        Log.i(TAG, "Init Fingerprint");
         mPromptInfoBuilder = new PromptInfo.Builder(cordova.getActivity());
     }
 
     public boolean execute(final String action, JSONArray args, CallbackContext callbackContext) {
 
         this.mCallbackContext = callbackContext;
-        Log.v(TAG, "Fingerprint action: " + action);
 
         if ("authenticate".equals(action)) {
             executeAuthenticate(args);
@@ -66,6 +66,7 @@ public class Fingerprint extends CordovaPlugin {
             sendError(error);
             return;
         }
+
         cordova.getActivity().runOnUiThread(() -> {
             try {
                 mPromptInfoBuilder.parseArgs(args);
@@ -73,10 +74,12 @@ public class Fingerprint extends CordovaPlugin {
                 sendError(PluginError.BIOMETRIC_ARGS_PARSING_FAILED);
                 return;
             }
+
             Intent intent = new Intent(cordova.getActivity().getApplicationContext(), BiometricActivity.class);
             intent.putExtras(mPromptInfoBuilder.build().getBundle());
             this.cordova.startActivityForResult(this, intent, REQUEST_CODE_BIOMETRIC);
         });
+
         PluginResult pluginResult = new PluginResult(PluginResult.Status.NO_RESULT);
         pluginResult.setKeepCallback(true);
         this.mCallbackContext.sendPluginResult(pluginResult);
@@ -134,8 +137,7 @@ public class Fingerprint extends CordovaPlugin {
 
             PluginResult result = new PluginResult(PluginResult.Status.ERROR, resultJson);
             result.setKeepCallback(true);
-            cordova.getActivity().runOnUiThread(() ->
-                    Fingerprint.this.mCallbackContext.sendPluginResult(result));
+            cordova.getActivity().runOnUiThread(() -> Fingerprint.this.mCallbackContext.sendPluginResult(result));
         } catch (JSONException e) {
             Log.e(TAG, e.getMessage(), e);
         }
@@ -146,8 +148,6 @@ public class Fingerprint extends CordovaPlugin {
     }
 
     private void sendSuccess(String message) {
-        Log.e(TAG, message);
-        cordova.getActivity().runOnUiThread(() ->
-                this.mCallbackContext.success(message));
+        cordova.getActivity().runOnUiThread(() -> this.mCallbackContext.success(message));
     }
 }
