@@ -63,7 +63,6 @@ class PromptInfo {
     }
 
     public static final class Builder {
-        private static final String TAG = "PromptInfo.Builder";
         private Bundle bundle;
         private boolean disableBackup = false;
         private String title;

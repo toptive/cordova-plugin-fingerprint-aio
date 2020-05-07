@@ -36,7 +36,7 @@ public class BiometricActivity extends AppCompatActivity {
             return;
         }
 
-        mCryptographyManager = new CryptographyManagerImpl();
+        mCryptographyManager = new CryptographyManager();
         mPromptInfo = new PromptInfo.Builder(getIntent().getExtras()).build();
         final Handler handler = new Handler(Looper.getMainLooper());
         Executor executor = handler::post;
@@ -83,11 +83,7 @@ public class BiometricActivity extends AppCompatActivity {
                 .setSubtitle(mPromptInfo.getSubtitle())
                 .setDescription(mPromptInfo.getDescription());
 
-        if (mPromptInfo.isDeviceCredentialAllowed() && Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) { // TODO: remove after fix https://issuetracker.google.com/issues/142740104
-            promptInfoBuilder.setDeviceCredentialAllowed(true);
-        } else {
-            promptInfoBuilder.setNegativeButtonText(mPromptInfo.getCancelButtonTitle());
-        }
+        promptInfoBuilder.setNegativeButtonText(mPromptInfo.getCancelButtonTitle());
 
         return promptInfoBuilder.build();
     }
@@ -124,33 +120,6 @@ public class BiometricActivity extends AppCompatActivity {
         }
     };
 
-    // TODO: remove after fix https://issuetracker.google.com/issues/142740104
-    private void showAuthenticationScreen() {
-        KeyguardManager keyguardManager = ContextCompat.getSystemService(this, KeyguardManager.class);
-        if (keyguardManager == null || android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.LOLLIPOP) {
-            return;
-        }
-        if (keyguardManager.isKeyguardSecure()) {
-            Intent intent = keyguardManager.createConfirmDeviceCredentialIntent(mPromptInfo.getTitle(), mPromptInfo.getDescription());
-            this.startActivityForResult(intent, REQUEST_CODE_CONFIRM_DEVICE_CREDENTIALS);
-        } else {
-            // Show a message that the user hasn't set up a lock screen.
-            finishWithError(PluginError.BIOMETRIC_SCREEN_GUARD_UNSECURED);
-        }
-    }
-
-    // TODO: remove after fix https://issuetracker.google.com/issues/142740104
-    @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode == REQUEST_CODE_CONFIRM_DEVICE_CREDENTIALS) {
-            if (resultCode == Activity.RESULT_OK) {
-                finishWithSuccess(null);
-            } else {
-                finishWithError(PluginError.BIOMETRIC_PIN_OR_PATTERN_DISMISSED);
-            }
-        }
-    }
-
     private void onError(int errorCode, @NonNull CharSequence errString) {
 
         switch (errorCode)
@@ -160,11 +129,6 @@ public class BiometricActivity extends AppCompatActivity {
                 finishWithError(PluginError.BIOMETRIC_DISMISSED);
                 return;
             case BiometricPrompt.ERROR_NEGATIVE_BUTTON:
-                // TODO: remove after fix https://issuetracker.google.com/issues/142740104
-                if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P && mPromptInfo.isDeviceCredentialAllowed()) {
-                    showAuthenticationScreen();
-                    return;
-                }
                 finishWithError(PluginError.BIOMETRIC_DISMISSED);
                 break;
             case BiometricPrompt.ERROR_LOCKOUT:
