@@ -237,7 +237,8 @@ enum PluginError: Int {
     }
 
     func decryptMessage(encryptedMessage: String, encryptionKey: Data) throws -> String {
-        let encryptedData = Data.init(base64Encoded: encryptedMessage)!
+        let wrappedData = Data.init(base64Encoded: encryptedMessage)
+        let encryptedData = wrappedData != nil ? wrappedData! : Data.init()
         let password = String(decoding: encryptionKey, as: UTF8.self)
         let decryptedData = try RNCryptor.decrypt(data: encryptedData, withPassword: password)
         let decryptedString = String(data: decryptedData, encoding: .utf8)!
